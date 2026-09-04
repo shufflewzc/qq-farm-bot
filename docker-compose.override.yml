@@ -1,0 +1,9 @@
+# Local deployment: keep the admin panel accessible only from this Mac.
+# Compose loads this override automatically alongside docker-compose.yml.
+services:
+  qq-farm-bot:
+    ports: !override
+      - "127.0.0.1:${PORT:-3007}:3007"
+    # The app listens on IPv4; localhost may resolve to IPv6 inside Alpine.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3007/api/game-version"]
