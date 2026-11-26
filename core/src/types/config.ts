@@ -66,6 +66,7 @@ export interface AutomationConfig extends RanchAutomationConfig {
    * 卖太早好友还没暴击、价格排后面；卖太晚高价铺子的额度又可能被别人吃满。
    */
   yishu_sell_after_time: string;
+  yishu_daily_time?: string;
 }
 
 export interface IntervalConfig {

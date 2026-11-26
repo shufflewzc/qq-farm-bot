@@ -145,6 +145,7 @@ test('account settings preserve sale tuning and reject attempts to restore expir
         yishu_scan_interval_minutes: 90,
         yishu_sell_min_count: 30,
         yishu_sell_after_time: '9:30',
+        yishu_daily_time: '6:35',
         farm: true,
     };
     const saved = save(automation);
@@ -153,6 +154,13 @@ test('account settings preserve sale tuning and reject attempts to restore expir
     assert.equal(saved.yishu_scan_interval_minutes, 90);
     assert.equal(saved.yishu_sell_min_count, 30);
     assert.equal(saved.yishu_sell_after_time, '09:30');
+    assert.equal(saved.yishu_daily_time, '06:35');
+    const patched = save({ yishu_share: false, yishu_daily_time: '07:45' });
+    assert.equal(patched.yishu_daily_time, '07:45');
+    assert.equal(patched.yishu_share, false);
+    assert.equal(patched.yishu_claim_seed, true);
+    assert.equal(patched.yishu_scan_interval_minutes, 90);
+    assert.equal(save({ yishu_daily_time: '24:00' }).yishu_daily_time, '00:20');
 
     clock.mock.mockImplementation(() => YISHU_END_MS);
     const expired = save(automation);
@@ -330,7 +338,7 @@ test('an inactive activity window stops the whole round', async () => {
  * 线上踩过的坑是「掉线瞬间被 clear 后再也不重建」，所以这里必须锁住这两条。
  */
 function timerHarness(t, automation, aliveKeys = [], now = YISHU_START_MS) {
-    t.mock.method(Date, 'now', () => now);
+    const clock = t.mock.method(Date, 'now', () => now);
     t.mock.method(require('../dist/models/store'), 'getAutomation', () => automation);
     const cleared = [];
     const timeouts = [];
@@ -339,21 +347,102 @@ function timerHarness(t, automation, aliveKeys = [], now = YISHU_START_MS) {
     const scheduler = {
         clear: (key) => { cleared.push(key); alive.delete(key); },
         has: (key) => alive.has(key),
-        setTimeoutTask: (key, ms) => { timeouts.push({ key, ms }); },
+        setTimeoutTask: (key, ms, fn) => { timeouts.push({ key, ms, fn }); alive.add(key); },
         setIntervalTask: (key, ms, fn, options) => { intervals.push({ key, ms, options }); alive.add(key); },
     };
     t.after(() => require('../dist/services/yishuhuanfu-auto').stopYishuTimer(scheduler));
-    return { cleared, timeouts, intervals, scheduler };
+    return { cleared, timeouts, intervals, scheduler, clock };
 }
+
+test('领种和分享单独按账号时间调度，改时间时替换原预约', (t) => {
+    const { startYishuTimer } = require('../dist/services/yishuhuanfu-auto');
+    const automation = { yishu_claim_seed: true, yishu_share: true, yishu_daily_time: '06:35' };
+    const h = timerHarness(t, automation, [], Date.parse('2026-11-26T06:34:45+08:00'));
+    startYishuTimer(h.scheduler, () => true);
+    assert.deepEqual(h.timeouts.map(({ key, ms }) => [key, ms]), [['yishu_daily', 15000]]);
+    assert.equal(h.intervals.length, 0);
+    startYishuTimer(h.scheduler, () => true);
+    assert.equal(h.timeouts.length, 1);
+
+    automation.yishu_daily_time = '07:00';
+    startYishuTimer(h.scheduler, () => true);
+    assert.deepEqual(h.timeouts.map(({ key, ms }) => [key, ms]), [['yishu_daily', 15000], ['yishu_daily', 1515000]]);
+});
+
+test('每天定时领种和分享一次，普通轮询和当天重启不会重复执行', async (t) => {
+    const { mkdtempSync, rmSync } = require('node:fs');
+    const { tmpdir } = require('node:os');
+    const { join } = require('node:path');
+    const { startYishuTimer, stopYishuTimer } = require('../dist/services/yishuhuanfu-auto');
+    const dir = mkdtempSync(join(tmpdir(), 'yishu-daily-'));
+    const savedEnv = { FARM_DATA_DIR: process.env.FARM_DATA_DIR, FARM_ACCOUNT_ID: process.env.FARM_ACCOUNT_ID };
+    process.env.FARM_DATA_DIR = dir;
+    process.env.FARM_ACCOUNT_ID = 'yishu-daily-test';
+    t.after(() => {
+        for (const [key, value] of Object.entries(savedEnv)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+        rmSync(dir, { recursive: true, force: true });
+    });
+
+    t.mock.method(require('../dist/services/warehouse'), 'getBag', async () => ({ items: [] }));
+    const activity = require('../dist/services/activity-center');
+    const calls = [];
+    let afterSeed = () => {};
+    t.mock.method(activity, 'getCurrentYishuHuanfuActivity', async () => makeSnapshot());
+    function checkWrite(options) {
+        if (options.shouldRun?.() === false) throw Object.assign(new Error('cancelled'), { code: 'YSHF_AUTOMATION_CANCELLED' });
+    }
+    t.mock.method(activity, 'claimYishuHuanfuSeeds', async (options) => {
+        checkWrite(options);
+        calls.push('seed');
+        afterSeed();
+        return { count: '28' };
+    });
+    t.mock.method(activity, 'shareYishuHuanfuShop', async (options) => {
+        checkWrite(options);
+        calls.push('share');
+        return {};
+    });
+    const lock = t.mock.method(require('../dist/services/automation-lock'), 'runExclusiveAutomationTask', async (_name, task) => task());
+
+    const before = Date.parse('2026-11-26T00:19:55+08:00');
+    const automation = { ...ALL_ON };
+    const h = timerHarness(t, automation, [], before);
+    startYishuTimer(h.scheduler, () => true);
+    await h.timeouts.find(task => task.key === 'yishu_initial').fn();
+    assert.deepEqual(calls, []);
+
+    h.clock.mock.mockImplementation(() => before + 5000);
+    lock.mock.mockImplementationOnce(async (_name, task) => {
+        h.clock.mock.mockImplementation(() => before + 70000);
+        return task();
+    });
+    await h.timeouts.find(task => task.key === 'yishu_daily').fn();
+    assert.deepEqual(calls, ['seed', 'share']);
+
+    stopYishuTimer(h.scheduler);
+    automation.yishu_daily_time = '00:22';
+    startYishuTimer(h.scheduler, () => true);
+    h.clock.mock.mockImplementation(() => before + 125000);
+    await h.timeouts.filter(task => task.key === 'yishu_daily').at(-1).fn();
+    assert.deepEqual(calls, ['seed', 'share']);
+
+    afterSeed = () => { automation.yishu_share = false; };
+    h.clock.mock.mockImplementation(() => before + 125000 + 86400000);
+    await h.timeouts.filter(task => task.key === 'yishu_daily').at(-1).fn();
+    assert.deepEqual(calls, ['seed', 'share', 'seed']);
+});
 
 test('定时器注册首跑与十分钟周期，且不再叠加错相位', (t) => {
     const { startYishuTimer, YISHU_CHECK_INTERVAL_MS, YISHU_INITIAL_DELAY_MS } = require('../dist/services/yishuhuanfu-auto');
     const h = timerHarness(t, ALL_ON);
     startYishuTimer(h.scheduler, () => true);
 
-    assert.equal(h.timeouts.length, 1);
-    assert.equal(h.timeouts[0].key, 'yishu_initial');
-    assert.equal(h.timeouts[0].ms, YISHU_INITIAL_DELAY_MS);
+    assert.equal(h.timeouts.length, 2);
+    assert.ok(h.timeouts.some(task => task.key === 'yishu_daily'));
+    assert.equal(h.timeouts.find(task => task.key === 'yishu_initial').ms, YISHU_INITIAL_DELAY_MS);
     assert.equal(h.intervals.length, 1);
     assert.equal(h.intervals[0].key, 'yishu_interval');
     assert.equal(h.intervals[0].ms, YISHU_CHECK_INTERVAL_MS);
@@ -364,7 +453,7 @@ test('定时器注册首跑与十分钟周期，且不再叠加错相位', (t) =
 test('未登录时不碰已有定时器，重复挂表不重建', (t) => {
     const { startYishuTimer } = require('../dist/services/yishuhuanfu-auto');
 
-    const offline = timerHarness(t, ALL_ON, ['yishu_interval']);
+    const offline = timerHarness(t, { yishu_auto_sell: true }, ['yishu_interval']);
     startYishuTimer(offline.scheduler, () => false);
     assert.deepEqual(offline.cleared, [], '未登录时不能清掉已有定时器');
     assert.equal(offline.timeouts.length, 0);
@@ -380,7 +469,7 @@ test('开关全关时只清不挂', (t) => {
     const { startYishuTimer } = require('../dist/services/yishuhuanfu-auto');
     const h = timerHarness(t, {}, ['yishu_initial', 'yishu_interval']);
     startYishuTimer(h.scheduler, () => true);
-    assert.deepEqual(h.cleared, ['yishu_initial', 'yishu_interval']);
+    assert.deepEqual(h.cleared, ['yishu_initial', 'yishu_interval', 'yishu_daily']);
     assert.equal(h.timeouts.length, 0);
     assert.equal(h.intervals.length, 0);
 });
@@ -390,7 +479,7 @@ for (const [label, now] of [['开始前', YISHU_START_MS - 1], ['结束时', YIS
         const { startYishuTimer } = require('../dist/services/yishuhuanfu-auto');
         const h = timerHarness(t, ALL_ON, ['yishu_initial', 'yishu_interval'], now);
         startYishuTimer(h.scheduler, () => true);
-        assert.deepEqual(h.cleared, ['yishu_initial', 'yishu_interval']);
+        assert.deepEqual(h.cleared, ['yishu_initial', 'yishu_interval', 'yishu_daily']);
         assert.deepEqual(h.timeouts, []);
         assert.deepEqual(h.intervals, []);
     });

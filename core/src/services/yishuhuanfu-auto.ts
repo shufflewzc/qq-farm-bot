@@ -1,4 +1,8 @@
-import { isYishuWindowOpen, YISHU_ACTION_FLAGS as YISHU_AUTOMATION_KEYS } from '../config/yishuhuanfu-window';
+import { createHash } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+import { isYishuWindowOpen, normalizeYishuDailyTime, YISHU_ACTION_FLAGS as YISHU_AUTOMATION_KEYS } from '../config/yishuhuanfu-window';
+
+const { ensureDataDir, getDataFile } = require('../config/runtime-paths');
 
 // 以薯换福的自动任务，按本项目既有习惯挂在 worker 的 scheduler 上，并串进
 // automation-lock 的同一把全局锁：不会和农场/牧场/节令/牧歌挤在同一秒发请求。
@@ -16,6 +20,12 @@ import { isYishuWindowOpen, YISHU_ACTION_FLAGS as YISHU_AUTOMATION_KEYS } from '
 // 「好友当天收购超量就换第二高」就是按 totalPrice 降序贪心：一家额度不够就吃满再往下走。
 // 10 分钟一轮：比卖薯快得多，但每轮只是读一次活动状态，真正花请求的是「有蜜薯才比价」。
 const YISHU_CHECK_INTERVAL_MS = 10 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const DAY_MS = 24 * 60 * MINUTE_MS;
+const BEIJING_OFFSET_MS = 8 * 60 * MINUTE_MS;
+
+type DailyAction = 'yishu_claim_seed' | 'yishu_share';
+type DailySlot = { minute: number; at: number };
 // 错相位：节令 19min、神秘商人 37min、牧歌 11min，以薯换福挑 4min。
 const YISHU_CHECK_PHASE_MS = 4 * 60 * 1000;
 // 首跑 260s：牧歌是 210s，登录后第一波活动读取不叠在同一秒。
@@ -239,7 +249,7 @@ function createYishuAutomation(deps: {
         }
     }
 
-    async function runYishuAutomation(automation: any = {}): Promise<void> {
+    async function runYishuAutomation(automation: any = {}, canRunDailyAction?: (action: DailyAction, beforeWrite?: boolean) => boolean): Promise<void> {
         const claimSeedEnabled = automation.yishu_claim_seed === true;
         const shareEnabled = automation.yishu_share === true;
         const commissionEnabled = automation.yishu_claim_commission === true;
@@ -308,14 +318,20 @@ function createYishuAutomation(deps: {
             else {
                 await spacing();
                 try {
-                    const result = await claimSeed({ withSnapshot: false });
-                    wrote = true;
-                    done('claimSeed', `领取红薯种子 ${result?.count} 个`);
+                    const shouldRun = canRunDailyAction && (() => canRunDailyAction('yishu_claim_seed', true));
+                    if (canRunDailyAction?.('yishu_claim_seed') === false) {
+                        skip('claimSeed', '自动条件已变化或今日定时任务已执行');
+                    } else {
+                        const result = await claimSeed(shouldRun ? { withSnapshot: false, shouldRun } : { withSnapshot: false });
+                        wrote = true;
+                        done('claimSeed', `领取红薯种子 ${result?.count} 个`);
+                    }
                 }
                 catch (e: any) {
                     const code = String(e?.code || '');
                     if (code === 'YSHF_SEED_ALREADY_CLAIMED') skip('claimSeed', '今日红薯种子已经领过');
                     else if (code === 'YSHF_INACTIVE') skip('read', '不在开放窗口（尚未开始或已经结束）');
+                    else if (code === 'YSHF_AUTOMATION_CANCELLED') skip('claimSeed', '自动条件已变化或今日定时任务已执行');
                     else failed('claimSeed', `领种子失败: ${e?.message || e}`);
                 }
             }
@@ -328,18 +344,24 @@ function createYishuAutomation(deps: {
             else {
                 await spacing();
                 try {
-                    const result = await shareShop({ withSnapshot: false });
-                    wrote = true;
-                    const extra = result?.count && result.count !== '0' ? `，额外获得 ${result.count} 个红薯种子` : '';
-                    const report = result?.shareReported === false
-                        ? `（分享上报未生效：${result?.shareReportError || '未知原因'}，暴击加成可能没加上）`
-                        : '';
-                    done('share', `分享铺子完成${extra}${report}`);
+                    const shouldRun = canRunDailyAction && (() => canRunDailyAction('yishu_share', true));
+                    if (canRunDailyAction?.('yishu_share') === false) {
+                        skip('share', '自动条件已变化或今日定时任务已执行');
+                    } else {
+                        const result = await shareShop(shouldRun ? { withSnapshot: false, shouldRun } : { withSnapshot: false });
+                        wrote = true;
+                        const extra = result?.count && result.count !== '0' ? `，额外获得 ${result.count} 个红薯种子` : '';
+                        const report = result?.shareReported === false
+                            ? `（分享上报未生效：${result?.shareReportError || '未知原因'}，暴击加成可能没加上）`
+                            : '';
+                        done('share', `分享铺子完成${extra}${report}`);
+                    }
                 }
                 catch (e: any) {
                     const code = String(e?.code || '');
                     if (code === 'YSHF_SHARE_ALREADY_DONE') skip('share', '今日已经分享过铺子');
                     else if (code === 'YSHF_INACTIVE') skip('read', '不在开放窗口（尚未开始或已经结束）');
+                    else if (code === 'YSHF_AUTOMATION_CANCELLED') skip('share', '自动条件已变化或今日定时任务已执行');
                     else failed('share', `分享铺子失败: ${e?.message || e}`);
                 }
             }
@@ -404,6 +426,7 @@ let lastSkipLogAt = 0;
 let lastWatchdogWarnAt = 0;
 let watchdogHandle: any = null;
 let watchdogScheduler: any = null;
+let scheduledDaily: DailySlot | null = null;
 
 function yishuLog(message: string, meta: any = {}): void {
     try {
@@ -454,7 +477,7 @@ function startYishuWatchdog(scheduler: any, isReady: () => boolean): void {
             }
             if (!isReady()) return;
             const { getAutomation } = require('../models/store');
-            if (!isYishuAutomationEnabled(getAutomation())) return;
+            if (!hasPeriodicTasks(getAutomation() || {})) return;
             const hasInterval = typeof watchdogScheduler?.has === 'function'
                 && watchdogScheduler.has('yishu_interval');
             const idleMs = lastTickStartedAt ? Date.now() - lastTickStartedAt : Number.POSITIVE_INFINITY;
@@ -476,7 +499,70 @@ function startYishuWatchdog(scheduler: any, isReady: () => boolean): void {
     if (typeof watchdogHandle?.unref === 'function') watchdogHandle.unref();
 }
 
-async function runYishuTick(isReady: () => boolean): Promise<void> {
+function hasDailyTasks(automation: any): boolean {
+    return automation.yishu_claim_seed === true || automation.yishu_share === true;
+}
+
+function hasPeriodicTasks(automation: any): boolean {
+    return automation.yishu_auto_sell === true || automation.yishu_claim_commission === true;
+}
+
+function dailyMinute(automation: any): number {
+    const [hours, minutes] = normalizeYishuDailyTime(automation.yishu_daily_time).split(':').map(Number);
+    return hours * 60 + minutes;
+}
+
+function reserveDailyRun(at: number): boolean {
+    const accountId = process.env.FARM_ACCOUNT_ID;
+    if (!accountId) return false;
+    const account = createHash('sha256').update(accountId).digest('hex');
+    const date = new Date(at + BEIJING_OFFSET_MS).toISOString().slice(0, 10);
+    try {
+        ensureDataDir();
+        // 标记先于发请求写入，即使进程在收到回包前退出，当天也不会重发。
+        writeFileSync(getDataFile(`yishu-daily-${account}-${date}.json`), '{}', { flag: 'wx', mode: 0o600 });
+        return true;
+    } catch (error: any) {
+        if (error?.code !== 'EEXIST') {
+            yishuLog('无法保存以薯换福定时执行记录，本次已跳过', { result: 'error', code: error?.code || '' });
+        }
+        return false;
+    }
+}
+
+function scheduleDaily(scheduler: any, isReady: () => boolean, minute: number, now = Date.now()): void {
+    const delay = (minute * MINUTE_MS - (now + BEIJING_OFFSET_MS) % DAY_MS + DAY_MS) % DAY_MS;
+    const task = { minute, at: now + delay };
+    if (!isYishuWindowOpen(task.at)) {
+        scheduler.clear('yishu_daily');
+        scheduledDaily = null;
+        return;
+    }
+    scheduledDaily = task;
+    scheduler.setTimeoutTask('yishu_daily', Math.max(0, task.at - Date.now()), async () => {
+        if (scheduledDaily !== task) return;
+        const { getAutomation } = require('../models/store');
+        const automation = getAutomation() || {};
+        if (!isYishuWindowOpen() || !hasDailyTasks(automation)) {
+            scheduledDaily = null;
+            return;
+        }
+        const configuredMinute = dailyMinute(automation);
+        const now = Date.now();
+        scheduleDaily(scheduler, isReady, configuredMinute, now === task.at ? now + 1 : now);
+        if (configuredMinute === task.minute && now >= task.at && now < task.at + MINUTE_MS) {
+            await runYishuTick(isReady, task);
+        }
+    });
+}
+
+function isCurrentDailySlot(daily: DailySlot, automation: any): boolean {
+    const now = Date.now();
+    return now >= daily.at && daily.minute === dailyMinute(automation)
+        && Math.floor((now + BEIJING_OFFSET_MS) / DAY_MS) === Math.floor((daily.at + BEIJING_OFFSET_MS) / DAY_MS);
+}
+
+async function runYishuTick(isReady: () => boolean, daily?: DailySlot): Promise<void> {
     if (!isYishuWindowOpen()) {
         if (watchdogScheduler) stopYishuTimer(watchdogScheduler);
         return;
@@ -487,17 +573,18 @@ async function runYishuTick(isReady: () => boolean): Promise<void> {
     }
     const { getAutomation } = require('../models/store');
     const { runExclusiveAutomationTask } = require('./automation-lock');
-    const automation = getAutomation() || {};
-    if (!isYishuAutomationEnabled(automation)) {
-        yishuSkipTick('自动任务开关全部关闭');
-        return;
-    }
-    lastTickStartedAt = Date.now();
+    const hasTasks = daily ? hasDailyTasks : hasPeriodicTasks;
+    if (!hasTasks(getAutomation() || {})) return;
+    if (!daily) lastTickStartedAt = Date.now();
     await runExclusiveAutomationTask('yishuhuanfu', async () => {
         if (!isReady() || !isYishuWindowOpen()) {
             yishuSkipTick('排队期间连接断开');
             return;
         }
+        const automation = getAutomation() || {};
+        if (!hasTasks(automation)) return;
+        if (daily && !isCurrentDailySlot(daily, automation)) return;
+
         if (!yishuAutomation) {
             const activity = require('./activity-center');
             const { getServerTimeSec, log } = require('../utils/utils');
@@ -512,8 +599,22 @@ async function runYishuTick(isReady: () => boolean): Promise<void> {
                 log,
             });
         }
-        await yishuAutomation.runYishuAutomation(getAutomation() || {});
-        lastTickFinishedAt = Date.now();
+        if (daily) {
+            let reserved = false;
+            await yishuAutomation.runYishuAutomation({
+                yishu_claim_seed: automation.yishu_claim_seed,
+                yishu_share: automation.yishu_share,
+            }, (action: DailyAction, beforeWrite = false) => {
+                const current = getAutomation() || {};
+                if (!isReady() || !isYishuWindowOpen() || !isCurrentDailySlot(daily, current) || current[action] !== true) return false;
+                if (!beforeWrite) return true;
+                if (!reserved) reserved = reserveDailyRun(daily.at);
+                return reserved;
+            });
+        } else {
+            await yishuAutomation.runYishuAutomation({ ...automation, yishu_claim_seed: false, yishu_share: false });
+        }
+        if (!daily) lastTickFinishedAt = Date.now();
     });
 }
 
@@ -540,9 +641,23 @@ function startYishuTimer(scheduler: any, isReady: () => boolean): void {
         return;
     }
     const { getAutomation } = require('../models/store');
-    if (!isYishuAutomationEnabled(getAutomation())) {
-        // 明确关闭：把上一轮的定时器停掉。
+    const automation = getAutomation() || {};
+    if (!isYishuAutomationEnabled(automation)) {
         stopYishuTimer(scheduler);
+        return;
+    }
+    if (hasDailyTasks(automation)) {
+        const minute = dailyMinute(automation);
+        if (scheduledDaily?.minute !== minute || !scheduler.has('yishu_daily')) {
+            scheduleDaily(scheduler, isReady, minute);
+        }
+    } else if (scheduledDaily) {
+        scheduler.clear('yishu_daily');
+        scheduledDaily = null;
+    }
+
+    if (!hasPeriodicTasks(automation)) {
+        if (watchdogHandle || scheduler.has('yishu_interval')) stopPeriodicTasks(scheduler);
         return;
     }
     // 已经在跑就别重建：重复 clear + setTimeout 会把首跑无限推后。
@@ -555,12 +670,18 @@ function startYishuTimer(scheduler: any, isReady: () => boolean): void {
     startYishuWatchdog(scheduler, isReady);
 }
 
-function stopYishuTimer(scheduler: any): void {
+function stopPeriodicTasks(scheduler: any): void {
     scheduler.clear('yishu_initial');
     scheduler.clear('yishu_interval');
     if (watchdogHandle) clearInterval(watchdogHandle);
     watchdogHandle = null;
     watchdogScheduler = null;
+}
+
+function stopYishuTimer(scheduler: any): void {
+    stopPeriodicTasks(scheduler);
+    scheduler.clear('yishu_daily');
+    scheduledDaily = null;
     yishuAutomation = null;
 }
 

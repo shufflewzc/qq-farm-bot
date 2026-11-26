@@ -512,7 +512,7 @@ function createYishuHuanfuActivityService(deps: any) {
         return yshfDto(groupReply, balances, null);
     }
 
-    async function claimYishuHuanfuSeeds(options: { withSnapshot?: boolean } = {}) {
+    async function claimYishuHuanfuSeeds(options: { withSnapshot?: boolean; shouldRun?: () => boolean } = {}) {
         return serializeMutation(async () => {
             const snapshot = await getCurrentYishuHuanfuActivity({ freshBalances: true });
             if (!snapshot.active) {
@@ -520,6 +520,9 @@ function createYishuHuanfuActivityService(deps: any) {
             }
             if (snapshot.daily.seedClaimed) {
                 throw businessError('YSHF_SEED_ALREADY_CLAIMED', '今日红薯种子已经领取，无需重复领取');
+            }
+            if (options.shouldRun?.() === false) {
+                throw businessError('YSHF_AUTOMATION_CANCELLED', '以薯换福自动条件已变化或今日定时任务已执行');
             }
 
             const reply = await (async () => {
@@ -1021,7 +1024,7 @@ function createYishuHuanfuActivityService(deps: any) {
     }
 
     /** 分享本人铺子（cmd 98）。每日首次触发分享暴击涨价。 */
-    async function shareYishuHuanfuShop(options: { withSnapshot?: boolean } = {}) {
+    async function shareYishuHuanfuShop(options: { withSnapshot?: boolean; shouldRun?: () => boolean } = {}) {
         return serializeMutation(async () => {
             const snapshot = await getCurrentYishuHuanfuActivity({ freshBalances: true });
             if (!snapshot.active) {
@@ -1029,6 +1032,9 @@ function createYishuHuanfuActivityService(deps: any) {
             }
             if (snapshot.daily.shared) {
                 throw businessError('YSHF_SHARE_ALREADY_DONE', '今日已经分享过铺子，暴击涨价每日只触发一次');
+            }
+            if (options.shouldRun?.() === false) {
+                throw businessError('YSHF_AUTOMATION_CANCELLED', '以薯换福自动条件已变化或今日定时任务已执行');
             }
 
             const reply = await operateYshf(types.YshfShareRequest, {

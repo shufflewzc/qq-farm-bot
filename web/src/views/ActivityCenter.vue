@@ -7,7 +7,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { resolveActivityGameplay } from '@/components/activity/gameplays'
 import ShareRewardActivity from '@/components/activity/ShareRewardActivity.vue'
-import YishuHuanfuActivityPanel from '@/components/activity/YishuHuanfuActivityPanel.vue'
 import { isYishuWindowOpen } from '@/constants/yishuhuanfu-window'
 import { useAccountStore } from '@/stores/account'
 import { useActivityCenterStore } from '@/stores/activity-center'
@@ -23,6 +22,7 @@ import QingMeiActivityPage from './activity-center/QingMeiActivityPage.vue'
 import QixiActivityPage from './activity-center/QixiActivityPage.vue'
 import StellarActivityPage from './activity-center/StellarActivityPage.vue'
 import WeatherActivityPage from './activity-center/WeatherActivityPage.vue'
+import YishuHuanfuActivityPage from './activity-center/YishuHuanfuActivityPage.vue'
 import { useActivityClock } from './activity-center/useActivityClock'
 
 const props = withDefaults(defineProps<{ space?: 'farm' | 'ranch' }>(), { space: 'farm' })
@@ -142,7 +142,7 @@ onUnmounted(() => {
     @open="openActivity"
   />
   <MugePage v-else-if="selectedActivity === 'muge'" @back="goBack" />
-  <YishuHuanfuActivityPanel v-else-if="selectedActivity === 'yishuhuanfu'" @back="goBack" />
+  <YishuHuanfuActivityPage v-else-if="selectedActivity === 'yishuhuanfu'" @back="goBack" />
   <MilkTeaPage v-else-if="selectedActivity === 'milk'" @back="goBack" />
   <ShareRewardActivity v-else-if="selectedActivity === 'happy'" :activity-id="selectedInstanceId" @back="goBack" />
   <AutumnActivityPage

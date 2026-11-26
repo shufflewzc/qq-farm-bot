@@ -14,6 +14,7 @@ export interface AutomationConfig {
   yishu_scan_interval_minutes?: number
   yishu_sell_min_count?: number
   yishu_sell_after_time?: string
+  yishu_daily_time?: string
   ranch_harvest?: boolean
   ranch_produce?: boolean
   ranch_buy?: boolean

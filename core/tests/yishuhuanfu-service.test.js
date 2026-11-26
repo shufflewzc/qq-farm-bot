@@ -169,6 +169,14 @@ function createHarness(options = {}) {
     return { service, requests, built, operateRequest };
 }
 
+test('scheduled seed and share revalidate authorization after reading the activity', async () => {
+    const { service, operateRequest } = createHarness();
+    const options = { withSnapshot: false, shouldRun: () => false };
+    await assert.rejects(() => service.claimYishuHuanfuSeeds(options), { code: 'YSHF_AUTOMATION_CANCELLED' });
+    await assert.rejects(() => service.shareYishuHuanfuShop(options), { code: 'YSHF_AUTOMATION_CANCELLED' });
+    assert.deepEqual(operateRequest(), []);
+});
+
 test('yishuhuanfu snapshot maps the price slot and gates actions by balance', async () => {
     const noSweetPotato = createHarness({ sweetPotato: '0', seed: '0' });
     const snapshot = await noSweetPotato.service.getCurrentYishuHuanfuActivity();

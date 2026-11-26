@@ -1,12 +1,12 @@
 <script setup lang="ts">
-/**
- * 以薯换福面板：Activity.vue 统一入口下的活动详情页。
- */
+import type { AutomationConfig } from '@/stores/setting'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
+import BaseSwitch from '@/components/ui/BaseSwitch.vue'
 import { useAccountStore } from '@/stores/account'
+import { useSettingStore } from '@/stores/setting'
 import { useYishuHuanfuStore, type YshfFriendShop } from '@/stores/yishuhuanfu'
 import { useToastStore } from '@/stores/toast'
 
@@ -15,8 +15,54 @@ const emit = defineEmits<{ back: [] }>()
 const accountStore = useAccountStore()
 const toast = useToastStore()
 const store = useYishuHuanfuStore()
+const settingStore = useSettingStore()
 const accountId = computed(() => String(accountStore.currentAccount?.id ?? ''))
 const activity = computed(() => store.state)
+const dailySaving = ref(false)
+const dailySettingsError = ref(false)
+const dailySettings = computed(() => settingStore.loadedAccountId === accountId.value
+  ? settingStore.settings.automation
+  : null)
+const dailyTime = computed(() => dailySettings.value?.yishu_daily_time || '00:20')
+const dailyDisabled = computed(() => !activity.value?.active || !dailySettings.value || settingStore.loading || dailySaving.value)
+
+type DailySettingPatch = Pick<AutomationConfig, 'yishu_claim_seed' | 'yishu_share' | 'yishu_daily_time'>
+
+async function loadDailySettings(id: string) {
+  dailySettingsError.value = false
+  try {
+    const ok = await settingStore.fetchSettings(id)
+    if (!ok && id === accountId.value)
+      dailySettingsError.value = true
+  }
+  catch {
+    if (id === accountId.value)
+      dailySettingsError.value = true
+  }
+}
+
+async function saveDailySetting(patch: DailySettingPatch) {
+  const id = accountId.value
+  if (!id || dailyDisabled.value)
+    return
+  dailySaving.value = true
+  try {
+    const result = await settingStore.saveSettings(id, { automation: patch })
+    if (!result.ok && id === accountId.value)
+      toast.error(result.error || '保存自动设置失败')
+  }
+  finally {
+    dailySaving.value = false
+  }
+}
+
+function changeDailyTime(event: Event) {
+  const input = event.target as HTMLInputElement
+  const value = input.value
+  input.value = dailyTime.value
+  if (value && value !== dailyTime.value)
+    void saveDailySetting({ yishu_daily_time: value })
+}
 
 type TabKey = 'shop' | 'store' | 'compare'
 const tab = ref<TabKey>('shop')
@@ -144,8 +190,14 @@ async function scan(force = false) {
 watch(accountId, (id) => {
   manualQuote.value = null
   manualNote.value = ''
-  if (id) void store.load(id)
-  else store.clear()
+  dailySettingsError.value = false
+  if (id) {
+    void store.load(id)
+    void loadDailySettings(id)
+  }
+  else {
+    store.clear()
+  }
 }, { immediate: true })
 
 let timer: ReturnType<typeof setInterval> | null = null
@@ -313,6 +365,33 @@ onUnmounted(() => {
             </BaseButton>
             <BaseButton variant="secondary" size="sm" :disabled="activity.daily.shared || !activity.actions.share.enabled" :loading="store.pending === 'share'" @click="share">
               {{ activity.daily.shared ? '今日已分享' : '分享铺子拿暴击' }}
+            </BaseButton>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-[var(--ui-border)] pt-4">
+            <BaseSwitch
+              label="自动领取种子"
+              :model-value="dailySettings?.yishu_claim_seed === true"
+              :disabled="dailyDisabled"
+              @update:model-value="saveDailySetting({ yishu_claim_seed: $event === true })"
+            />
+            <BaseSwitch
+              label="自动分享"
+              :model-value="dailySettings?.yishu_share === true"
+              :disabled="dailyDisabled"
+              @update:model-value="saveDailySetting({ yishu_share: $event === true })"
+            />
+            <label class="flex items-center gap-2 text-xs text-[var(--ui-muted)]">
+              每日执行时间（北京时间）
+              <input
+                type="time"
+                class="h-8 rounded-md border border-[var(--ui-border)] bg-[var(--ui-surface-solid)] px-2 text-sm text-[var(--ui-ink)] disabled:opacity-50"
+                :value="dailyTime"
+                :disabled="dailyDisabled"
+                @change="changeDailyTime"
+              >
+            </label>
+            <BaseButton v-if="dailySettingsError" variant="secondary" size="sm" @click="loadDailySettings(accountId)">
+              重新读取设置
             </BaseButton>
           </div>
         </section>

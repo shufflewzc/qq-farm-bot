@@ -250,6 +250,9 @@ const ranchFeedStages = [
               <BaseInput v-model.number="settings.automation.yishu_sell_min_count" label="起卖数量" type="number" min="1" max="10000" />
             </template>
           </div>
+          <p v-if="settings.automation.yishu_auto_sell" class="mt-3 text-xs text-[var(--ui-muted)]">
+            到达起卖时间后，从下一轮自动任务开始售卖，每轮间隔 10 分钟。比价只查询，实际卖出才占用好友小铺的收购额度。
+          </p>
         </section>
 
         <section class="farm-card rounded-2xl p-4">

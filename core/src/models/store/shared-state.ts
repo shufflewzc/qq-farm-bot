@@ -1,6 +1,7 @@
 import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, FertilizerLandType, FertilizerMode, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
 import { normalizeNotificationTypes } from '../../config/notification-types';
 import { PUSHOO_CHANNELS } from '../../config/push-channels';
+import { normalizeYishuDailyTime, YISHU_DAILY_DEFAULT_TIME } from '../../config/yishuhuanfu-window';
 export {};
 
 const { DEFAULT_TIME_ZONE, normalizeTimeZone, resolveClientVersion } = require('../../config/config');
@@ -89,6 +90,7 @@ const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
         yishu_sell_min_count: 1,
         // 空串 = 不限时段；填 "HH:MM" 就等过了这个点才卖。
         yishu_sell_after_time: '',
+        yishu_daily_time: YISHU_DAILY_DEFAULT_TIME,
     },
     plantingStrategy: 'max_exp',
     preferredSeedId: 0,
@@ -387,6 +389,8 @@ function normalizeAccountConfig(input: unknown, fallback: AccountConfig = accoun
                 (cfg.automation as any)[k] = Math.max(5, Math.min(720, Number.parseInt(String(v), 10) || 30));
             } else if (k === 'yishu_sell_min_count') {
                 (cfg.automation as any)[k] = Math.max(1, Math.min(10000, Number.parseInt(String(v), 10) || 1));
+            } else if (k === 'yishu_daily_time') {
+                cfg.automation.yishu_daily_time = normalizeYishuDailyTime(v);
             } else if (k === 'yishu_sell_after_time') {
                 // "HH:MM" 是字符串项，走下面的 !!v 会被折成 true，时间闸门直接失效。
                 const raw = String(v ?? '').trim();
