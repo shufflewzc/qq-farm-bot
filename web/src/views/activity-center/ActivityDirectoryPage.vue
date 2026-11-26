@@ -280,7 +280,7 @@ function activityDisplayName(activity: ActivityDirectoryItemDto) {
 }
 function activityIconSrc(activity: ActivityDirectoryItemDto) {
   if (activity.gameplayKey === 'yishuhuanfu')
-    return '/activity/yishuhuanfu/card-bg.svg'
+    return '/activity/yishuhuanfu/entry-icon.png'
   if (activity.gameplayKey === 'muge')
     return '/activity-assets/muge/icon.png'
   if (activity.activityIds.some(id => ['2026111800', '2026111801'].includes(id)))

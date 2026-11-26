@@ -1,8 +1,6 @@
 <script setup lang="ts">
 /**
  * 以薯换福面板：Activity.vue 统一入口下的活动详情页。
- * 样式沿用本项目 Panel 惯例（UnoCSS 原子类 + BaseButton/BaseSelect + 主题渐变头图），
- * 不引入上游的 Naive UI 或独立页面壳。
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -168,30 +166,42 @@ onUnmounted(() => {
 
 <template>
   <section class="space-y-4">
-    <div class="overflow-hidden rounded-xl from-amber-500 via-orange-500 to-rose-400 bg-gradient-to-br p-6 text-white shadow-sm">
+    <div class="relative isolate overflow-hidden rounded-xl bg-[#4d2b1f] p-4 text-white shadow-sm sm:p-6">
+      <img
+        src="/activity/yishuhuanfu/stall.png"
+        alt=""
+        class="pointer-events-none absolute right-0 top-0 h-full w-2/3 object-cover object-top -z-20"
+      >
+      <div class="pointer-events-none absolute inset-0 from-[#3f271d] via-[#3f271d]/90 to-[#3f271d]/55 bg-gradient-to-r -z-10" />
       <div class="flex items-start justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <button class="rounded-lg bg-white/20 px-3 py-2 text-sm transition hover:bg-white/30" @click="emit('back')">
+        <div class="min-w-0 flex flex-1 items-center gap-3">
+          <button class="shrink-0 rounded-lg bg-white/20 px-3 py-2 text-sm transition hover:bg-white/30" @click="emit('back')">
             <span class="i-carbon-arrow-left" />返回
           </button>
-          <div>
+          <div class="min-w-0">
             <p class="text-sm text-white/75">
               QQ 农场限时活动
             </p>
-            <h1 class="mt-1 text-2xl font-semibold sm:text-3xl">
-              {{ activity?.name || '以薯换福' }}
+            <h1 class="mt-1">
+              <img
+                src="/activity/yishuhuanfu/title.png"
+                :alt="activity?.name || '以薯换福'"
+                width="456"
+                height="153"
+                class="h-auto max-w-full w-44 sm:w-56"
+              >
             </h1>
             <p class="mt-1 text-xs text-white/80 sm:text-sm">
               {{ time(activity?.startTime ?? null) }} — {{ time(activity?.endTime ?? null) }}
             </p>
           </div>
         </div>
-        <BaseButton variant="secondary" size="sm" :loading="store.loading" @click="refresh">
+        <BaseButton variant="secondary" size="sm" class="shrink-0" :loading="store.loading" @click="refresh">
           刷新
         </BaseButton>
       </div>
       <div class="grid grid-cols-2 mt-6 gap-3 text-center sm:grid-cols-4">
-        <div class="rounded-lg bg-white/15 p-3">
+        <div class="rounded-lg bg-[#2e1b14]/65 p-3">
           <div class="text-xs text-white/70">
             今日收购价
           </div>
@@ -202,7 +212,7 @@ onUnmounted(() => {
             基础 {{ fmt(activity?.shop.price) }} + 暴击 {{ fmt(bonus) }}
           </div>
         </div>
-        <div class="rounded-lg bg-white/15 p-3">
+        <div class="rounded-lg bg-[#2e1b14]/65 p-3">
           <div class="text-xs text-white/70">
             福气币
           </div>
@@ -213,7 +223,7 @@ onUnmounted(() => {
             读取失败
           </div>
         </div>
-        <div class="rounded-lg bg-white/15 p-3">
+        <div class="rounded-lg bg-[#2e1b14]/65 p-3">
           <div class="text-xs text-white/70">
             背包蜜薯
           </div>
@@ -224,7 +234,7 @@ onUnmounted(() => {
             暂不可出售
           </div>
         </div>
-        <div class="rounded-lg bg-white/15 p-3">
+        <div class="rounded-lg bg-[#2e1b14]/65 p-3">
           <div class="text-xs text-white/70">
             可领提成
           </div>

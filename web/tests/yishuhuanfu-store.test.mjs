@@ -117,6 +117,25 @@ test('catalog keeps the server exchangeable flag and defaults missing flag to cl
   })
 })
 
+test('activity rules display the server paragraphs and still accept plain text or arrays', async () => {
+  const cases = [
+    {
+      rules: { title: '活动规则', paragraphs: [' 领取红薯种子 ', '', '出售蜜薯可获得福气币'] },
+      expected: ['领取红薯种子', '出售蜜薯可获得福气币'],
+    },
+    { rules: { title: '', paragraphs: [] }, expected: [] },
+    { rules: '领取红薯种子\n\n出售蜜薯', expected: ['领取红薯种子', '出售蜜薯'] },
+    { rules: [' 领取红薯种子 ', ''], expected: ['领取红薯种子'] },
+  ]
+
+  for (const { rules, expected } of cases) {
+    const store = freshStore()
+    snapshotPayload = { activityId: '2026111708', active: true, rules }
+    assert.equal(await store.load('1001'), true)
+    assert.deepEqual(store.state.rules, expected)
+  }
+})
+
 test('records are isolated by account: switching account discards the old list', async () => {
   const store = freshStore('1001')
   recordsPayload = [{ timestamp: '1795500000', gid: '2001', count: '30', total: '4320', name: 'A', avatar: '', level: '143', commission: '86' }]

@@ -183,6 +183,8 @@ function normalizeActivity(value: unknown): YshfActivity | null {
   const potato = record(raw.sweetPotato)
   const coin = record(raw.luckCoin)
   const actions = record(raw.actions)
+  const ruleContent: unknown = isRecord(raw.rules) ? raw.rules.paragraphs : raw.rules
+  const ruleParagraphs = typeof ruleContent === 'string' ? ruleContent.split(/\n+/) : ruleContent
   const balanceOf = (item: Record<string, any>) => item.balance === null || item.balance === undefined
     ? null : text(item.balance)
   const knownOf = (item: Record<string, any>) => bool(item.balanceKnown, item.balance_known)
@@ -192,8 +194,9 @@ function normalizeActivity(value: unknown): YshfActivity | null {
     name: text(raw.name, '以薯换福'),
     startTime: toMs(raw.startTime ?? raw.start_time),
     endTime: toMs(raw.endTime ?? raw.end_time),
-    rules: Array.isArray(raw.rules) ? raw.rules.map((r: any) => text(r)).filter(Boolean)
-      : text(raw.rules).split(/\n+/).map(s => s.trim()).filter(Boolean),
+    rules: Array.isArray(ruleParagraphs)
+      ? ruleParagraphs.filter((rule): rule is string => typeof rule === 'string').map(rule => rule.trim()).filter(Boolean)
+      : [],
     active: bool(raw.active),
     serverTime: text(raw.serverTime, raw.server_time),
     shop: {

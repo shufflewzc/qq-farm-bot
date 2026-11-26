@@ -1,0 +1,19 @@
+{
+  "entry-icon.png": {
+    "source": "https://cdn-resource.nqf.qq.com/release/remote/extraRes/native/1a/1a39a37cf.ea85a.astc",
+    "spriteSource": "https://cdn-resource.nqf.qq.com/release/remote/extraRes/import/04/043979f16.1f49f.json",
+    "assetPath": "gui/texture/v2/icon_rightMenu_mapleMarket/spriteFrame",
+    "sha256": "9bd82b1a903482a58f31a89460654b599e8a0f95efe6cf24bfd1bc28df565c6a"
+  },
+  "title.png": {
+    "source": "https://cdn-resource.nqf.qq.com/release/remote/delayRes/native/1f/1fdde6655.9cc8c.astc",
+    "spriteSource": "https://cdn-resource.nqf.qq.com/release/remote/delayRes/import/02/0280fd198.082a4.json",
+    "assetPath": "gui/texture/activity/mapleMarket/MapleMarketUI/img_mapleMarketUI_title/spriteFrame",
+    "sha256": "81cce5200db750dc66ab48207c9d89feba87b1071d3e603552f0784cb69d798e"
+  },
+  "stall.png": {
+    "source": "https://cdn-resource.nqf.qq.com/release/remote/delayRes/native/07/07adf7a2-ea0e-4d2a-94bf-852aaf2e27aa.695a1.png",
+    "assetPath": "gui/texture/activity/mapleMarket/MapleMarketUI/img_mapleMarketUI_bg2",
+    "sha256": "99ee5a0c7155e31a53f47046428cb2c76285b5da56a1ba31d77eea4aa2eb5d2f"
+  }
+}
