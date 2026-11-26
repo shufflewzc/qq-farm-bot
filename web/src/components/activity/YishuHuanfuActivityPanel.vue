@@ -296,6 +296,9 @@ onUnmounted(() => {
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             <BaseButton variant="primary" size="sm" :disabled="activity.daily.seedClaimed || !activity.actions.claimSeed.enabled" :loading="store.pending === 'seed/claim'" @click="claimSeed">
+              <template v-if="activity.seed.image" #icon>
+                <img :src="activity.seed.image" alt="" class="h-4 w-4 object-contain">
+              </template>
               {{ activity.daily.seedClaimed ? '今日种子已领' : '领取红薯种子' }}
             </BaseButton>
             <BaseButton variant="secondary" size="sm" :disabled="activity.daily.shared || !activity.actions.share.enabled" :loading="store.pending === 'share'" @click="share">
