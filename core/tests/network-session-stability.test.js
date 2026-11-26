@@ -7,6 +7,7 @@ const { createRequire } = require('node:module');
 const test = require('node:test');
 const { CONFIG } = require('../dist/config/config');
 const { loadProto, types } = require('../dist/utils/proto');
+const { formatDateKeyInTimeZone } = require('../dist/utils/utils');
 
 function harness() {
     const filename = path.resolve(__dirname, '../dist/utils/network.js');
@@ -34,7 +35,10 @@ function harness() {
         '../services/ace': { startAceRuntime() {}, stopAceRuntime() {}, getAceDiagnostics: () => ({}) },
         '../services/status': { updateStatusFromLogin() {} },
         './crypto-wasm': { bindUser() {}, getEncryptedInitInfo: () => '', getDiagnostics: () => ({}) },
-        './utils': { toLong: Number, toNum: Number, log() {}, logWarn() {}, syncServerTime() {} },
+        './utils': {
+            toLong: Number, toNum: Number, log() {}, logWarn() {}, syncServerTime() {},
+            getServerTimeSec: () => Math.floor(wall / 1000), formatDateKeyInTimeZone,
+        },
     };
     const sandbox = {
         require: name => overrides[name] || realRequire(name), module: { exports: {} }, exports: {},

@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const { loadProto, types } = require('../dist/utils/proto');
 const { CONFIG } = require('../dist/config/config');
+const { formatDateKeyInTimeZone } = require('../dist/utils/utils');
 
 async function harness(platform) {
     await loadProto();
@@ -20,7 +21,10 @@ async function harness(platform) {
         '../services/ace': { startAceRuntime: () => steps.push('ace') },
         '../services/status': { updateStatusFromLogin() {} },
         './crypto-wasm': { bindUser: async () => steps.push('bind'), getEncryptedInitInfo: () => '' },
-        './utils': { toLong: Number, toNum: Number, log() {}, logWarn() {}, syncServerTime() {} },
+        './utils': {
+            toLong: Number, toNum: Number, log() {}, logWarn() {}, syncServerTime() {},
+            getServerTimeSec: () => 1794888024, formatDateKeyInTimeZone,
+        },
     };
     const sandbox = { require: name => overrides[name] || realRequire(name), module: { exports: {} }, exports: {}, Buffer, console: { warn() {} }, process, steps };
     vm.runInNewContext(`${fs.readFileSync(file, 'utf8')}

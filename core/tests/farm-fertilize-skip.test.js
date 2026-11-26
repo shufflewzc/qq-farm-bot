@@ -24,6 +24,12 @@ require.cache[protoPath] = {
                 create: value => value,
                 encode: () => ({ finish: () => Buffer.alloc(0) }),
             },
+            FertilizeReply: {
+                decode: body => {
+                    assert.ok(Buffer.isBuffer(body));
+                    return { land: [] };
+                },
+            },
         },
     },
 };
@@ -55,17 +61,17 @@ test('fertilize skips 1001025 lands and continues, then stops on other errors', 
             error.code = 1001025;
             throw error;
         },
-        () => ({}),
+        () => ({ body: Buffer.alloc(0) }),
         () => {
             const error = new Error('PlantService.Fertilize 错误: code=1001024 当前阶段不可施肥');
             error.code = 1001024;
             throw error;
         },
-        () => ({}),
+        () => ({ body: Buffer.alloc(0) }),
         () => {
             throw new Error('PlantService.Fertilize 错误: code=1000019 肥料不足');
         },
-        () => ({}),
+        () => ({ body: Buffer.alloc(0) }),
     );
 
     const count = await fertilize([1, 2, 3, 4, 5, 6], 1011, false);
