@@ -157,6 +157,24 @@ function createYishuAutomation(deps: {
         const result = await scanFriends({ limit, force: true });
         const shops = Array.isArray(result?.shops) ? result.shops : [];
         scanCache = { at: now, limit, shops };
+        const candidateCount = result?.candidateCount ?? shops.filter(shop => !shop.own).length;
+        const scannedCount = result?.scanned ?? shops.length;
+        const pendingCount = result?.pendingCount ?? 0;
+        const pending = pendingCount > 0 ? `（还有 ${pendingCount} 家待轮换）` : '';
+        const topQuotes = shops.slice(0, 5).map((shop) => {
+            const name = shop.own ? '自己' : (shop.name || shop.gid);
+            return `${name}:${shop.totalPrice}`;
+        }).join(' > ');
+        log('活动', `以薯换福比价：候选好友 ${candidateCount} 家，本轮扫描 ${scannedCount} 家${pending}，前五报价 ${topQuotes || '无'}`, {
+            module: 'activity',
+            event: '以薯换福自动',
+            result: 'ok',
+            action: 'scan',
+            candidateCount,
+            scannedCount,
+            pendingCount,
+            limit,
+        });
         return shops;
     }
 

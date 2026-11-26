@@ -163,7 +163,7 @@ function createHarness(options = {}) {
         // 好友列表走桩，避免测试里拉起真实网关。
         getAllFriends: options.getAllFriends || (async () => ({ game_friends: [] })),
         // 面板其它账号的好友默认空，测试可注入以覆盖跨账号候选池。
-        getPanelFriendGids: options.getPanelFriendGids || (() => []),
+        getPanelFriendGids: options.getPanelFriendGids === undefined ? () => [] : options.getPanelFriendGids,
     });
     const operateRequest = () => requests.filter(entry => entry.method === 'Operate');
     return { service, requests, built, operateRequest };
@@ -742,6 +742,32 @@ test('yishuhuanfu commission stays unclaimable when nobody sold into the shop', 
     const snapshot = await harness.service.getCurrentYishuHuanfuActivity();
     assert.equal(snapshot.commission.pending, '0');
     assert.equal(snapshot.commission.claimable, false);
+});
+
+test('yishuhuanfu scan reads current panel accounts through the default store path', async (t) => {
+    const accounts = require('../dist/models/store/accounts');
+    const gidCache = require('../dist/models/store/gid-cache');
+    let registered = [{ id: '2', name: '另一账号' }];
+    t.mock.method(accounts, 'loadAccounts', () => ({ accounts: registered }));
+    const readCache = t.mock.method(gidCache, 'readKnownFriendGidsCache', () => [910001]);
+    const harness = createHarness({
+        getPanelFriendGids: null,
+        shopQuotes: {
+            1220537209: { price: '100', quota: '8000' },
+            910001: { price: '260', quota: '2000', name: '缓存好友' },
+        },
+    });
+
+    const first = await harness.service.scanYishuHuanfuFriendShops({ force: true });
+    assert.equal(first.panelFriendCount, 1);
+    assert.equal(first.best.gid, '910001');
+    assert.equal(first.best.panelAccount, '另一账号');
+    assert.deepEqual(readCache.mock.calls.map(call => call.arguments), [['2']]);
+
+    registered = [];
+    const next = await harness.service.scanYishuHuanfuFriendShops({ force: true });
+    assert.equal(next.panelFriendCount, 0);
+    assert.equal(readCache.mock.callCount(), 1);
 });
 
 test('yishuhuanfu scan pools friends from every panel account, dedupes and rotates the window', async () => {

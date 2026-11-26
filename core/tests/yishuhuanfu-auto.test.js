@@ -82,7 +82,7 @@ function createHarness(options = {}) {
         },
         scanFriends: async (args) => {
             calls.push(['scanFriends', args]);
-            return { shops };
+            return { shops, ...options.scanStats };
         },
         sell: async (friendGid, count, args) => {
             calls.push(['sell', friendGid, count, args]);
@@ -323,6 +323,32 @@ test('friend price scan is throttled by the configured interval', async () => {
     assert.equal(harness.calls.filter(entry => entry[0] === 'scanFriends').length, 1);
     // 比价只传好友数上限，force 由自动任务自己控制。
     assert.deepEqual(harness.calls.find(entry => entry[0] === 'scanFriends')[1], { limit: 20, force: true });
+});
+
+test('friend price scans log counts and the top five quotes once per scan', async () => {
+    const harness = createHarness({
+        snapshot: makeSnapshot({ sweetPotatoBalance: '10' }),
+        scanStats: { candidateCount: 22, scanned: 20, pendingCount: 3 },
+        shops: [
+            makeShop({ gid: '101', name: '甲', totalPrice: '190', quota: '1000' }),
+            makeShop({ gid: '102', name: '', totalPrice: '180' }),
+            makeShop({ gid: '103', own: true, totalPrice: '170' }),
+            makeShop({ gid: '104', name: '乙', totalPrice: '160' }),
+            makeShop({ gid: '105', name: '丙', totalPrice: '150' }),
+            makeShop({ gid: '106', name: '丁', totalPrice: '140' }),
+        ],
+    });
+
+    await harness.automation.runYishuAutomation(ALL_ON);
+    await harness.automation.runYishuAutomation(ALL_ON);
+
+    const scans = harness.logs.filter(entry => entry.meta.action === 'scan');
+    assert.equal(scans.length, 1);
+    assert.equal(scans[0].meta.candidateCount, 22);
+    assert.equal(scans[0].meta.scannedCount, 20);
+    assert.equal(scans[0].meta.pendingCount, 3);
+    assert.equal(scans[0].meta.limit, 20);
+    assert.match(scans[0].message, /甲:190 > 102:180 > 自己:170 > 乙:160 > 丙:150$/);
 });
 
 test('an inactive activity window stops the whole round', async () => {

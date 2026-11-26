@@ -179,10 +179,10 @@ function createYishuHuanfuActivityService(deps: any) {
         const result: Array<{ gid: string; accountName: string }> = [];
         const seen = new Set<string>();
         try {
-            const store = require('../models/store');
-            const { readKnownFriendGidsCache } = require('../models/store/gid-cache');
-            const listed = store?.getAccounts?.();
-            const accounts = Array.isArray(listed?.accounts) ? listed.accounts : [];
+            const { loadAccounts } = require('../../models/store/accounts');
+            const { readKnownFriendGidsCache } = require('../../models/store/gid-cache');
+            // 账号由面板进程维护，工作进程每轮从磁盘读取当前账号列表。
+            const { accounts } = loadAccounts();
             for (const account of accounts) {
                 const accountId = String(account?.id || '');
                 if (!accountId) continue;
