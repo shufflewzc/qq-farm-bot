@@ -1,4 +1,4 @@
-export {};
+import { expiredYishuSwitches, YISHU_END_MS } from '../config/yishuhuanfu-window';
 const { fork } = require('node:child_process');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
@@ -155,9 +155,32 @@ function createRuntimeEngine(options: RuntimeEngineOptions = {}) {
         }
     }
 
+    function expireYishuAccountSettings(): void {
+        for (const account of store.getAccounts().accounts) {
+            const automation = expiredYishuSwitches(store.getAutomation(account.id));
+            if (!automation) continue;
+            store.applyConfigSnapshot({ automation }, { accountId: account.id });
+            nextConfigRevision();
+            broadcastConfigToWorkers(account.id);
+        }
+    }
+
     async function start(options: { startAdminServer?: boolean; autoStartAccounts?: boolean } = {}): Promise<void> {
         const shouldStartAdminServer = options.startAdminServer !== false;
         const shouldAutoStartAccounts = options.autoStartAccounts !== false;
+
+        const yishuRemaining = YISHU_END_MS - Date.now();
+        if (yishuRemaining <= 0) {
+            expireYishuAccountSettings();
+        } else if (yishuRemaining <= 2_147_483_647) {
+            setTimeout(() => {
+                try {
+                    expireYishuAccountSettings();
+                } catch (error: any) {
+                    log('系统', `关闭已结束的以薯换福开关失败: ${error.message}`);
+                }
+            }, yishuRemaining).unref();
+        }
 
         const savedSystemConfig = store.getSystemConfig();
         if (savedSystemConfig) {

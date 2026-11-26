@@ -1,4 +1,5 @@
 import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, FertilizerLandType, IntervalConfig, PlantingStrategy, QuietHoursConfig } from '../../types/config';
+import { expiredYishuSwitches, YISHU_TUNING_KEYS } from '../../config/yishuhuanfu-window';
 export {};
 
 const sharedState = require('./shared-state');
@@ -48,6 +49,7 @@ function setAccountConfigSnapshot(accountId: unknown, nextConfig: Partial<Accoun
     const persistence = persist ? require('./global-config') : null;
     const id = sharedState.resolveAccountId(accountId);
     const next = normalizeAccountConfig(nextConfig, sharedState.accountFallbackConfig);
+    Object.assign(next.automation, expiredYishuSwitches(next.automation));
     if (!id) {
         if (persist) persistence.saveGlobalConfig({ defaultAccountConfig: next });
         else {
@@ -152,6 +154,9 @@ function applyConfigSnapshot(snapshot: Record<string, any> | undefined, options:
                 (next.automation as any)[k] = normalizeRanchSetting(k, v);
             } else if (k === 'fertilizer_smart_seconds') {
                 (next.automation as any)[k] = Math.max(30, Math.min(3600, Number(v) || 300));
+            } else if (YISHU_TUNING_KEYS.has(k)) {
+                // setAccountConfigSnapshot normalizes these values before saving.
+                (next.automation as any)[k] = v;
             } else {
                 (next.automation as any)[k] = !!v;
             }

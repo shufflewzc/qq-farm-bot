@@ -5,6 +5,15 @@ import api, { getApiErrorMessage } from '@/api'
 type RanchFeedStage = 'any' | 'longest' | 'to_production' | 'near_harvest'
 
 export interface AutomationConfig {
+  yishu_claim_seed?: boolean
+  yishu_share?: boolean
+  yishu_auto_sell?: boolean
+  yishu_claim_commission?: boolean
+  yishu_sell_fallback_own?: boolean
+  yishu_scan_friend_limit?: number
+  yishu_scan_interval_minutes?: number
+  yishu_sell_min_count?: number
+  yishu_sell_after_time?: string
   ranch_harvest?: boolean
   ranch_produce?: boolean
   ranch_buy?: boolean

@@ -7,6 +7,8 @@ import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseSwitch from '@/components/ui/BaseSwitch.vue'
 import HourInput from '@/components/ui/HourInput.vue'
+import { isYishuWindowOpen } from '@/constants/yishuhuanfu-window'
+import { useActivityClock } from '@/views/activity-center/useActivityClock'
 import RanchCubPriority from './RanchCubPriority.vue'
 
 export type AutomationSettingsFormModel = Pick<
@@ -45,6 +47,12 @@ const emit = defineEmits<{
 }>()
 
 const settings = defineModel<AutomationSettingsFormModel>({ required: true })
+const { serverNow } = useActivityClock()
+const showYishu = computed(() => isYishuWindowOpen(serverNow.value))
+const yishuSellTimeOptions = [{ label: '不限', value: '' }, ...Array.from({ length: 48 }, (_, index) => {
+  const time = `${String(Math.floor(index / 2)).padStart(2, '0')}:${index % 2 ? '30' : '00'}`
+  return { label: time, value: time }
+})]
 const ripeningOnly = computed(() => ['normal_ripen', 'organic_ripen'].includes(settings.value.automation.fertilizer ?? 'none'))
 const ripeningEnabled = computed(() => ripeningOnly.value || settings.value.automation.fertilizer === 'smart')
 const ripeningFertilizerLabel = computed(() => settings.value.automation.fertilizer === 'normal_ripen' ? '普通化肥' : '有机化肥')
@@ -224,6 +232,23 @@ const ranchFeedStages = [
                 help="默认 10 时，每天检查一次；0 时为午夜。加减到边界会循环。"
               />
             </div>
+          </div>
+        </section>
+
+        <section v-if="showYishu" class="farm-card rounded-2xl p-4">
+          <h4 class="mb-3 font-bold">以薯换福</h4>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <BaseSwitch v-model="settings.automation.yishu_claim_seed" label="自动领取红薯种子" />
+            <BaseSwitch v-model="settings.automation.yishu_share" label="自动分享铺子" />
+            <BaseSwitch v-model="settings.automation.yishu_auto_sell" label="自动比价卖薯" />
+            <BaseSwitch v-model="settings.automation.yishu_claim_commission" label="自动领取收购提成" />
+            <template v-if="settings.automation.yishu_auto_sell">
+              <BaseSwitch v-model="settings.automation.yishu_sell_fallback_own" label="好友收满时卖给自己" />
+              <BaseSelect v-model="settings.automation.yishu_sell_after_time" label="开始售卖时间" :options="yishuSellTimeOptions" />
+              <BaseInput v-model.number="settings.automation.yishu_scan_friend_limit" label="比价好友上限" type="number" min="1" max="200" />
+              <BaseInput v-model.number="settings.automation.yishu_scan_interval_minutes" label="比价间隔（分钟）" type="number" min="5" max="720" />
+              <BaseInput v-model.number="settings.automation.yishu_sell_min_count" label="起卖数量" type="number" min="1" max="10000" />
+            </template>
           </div>
         </section>
 

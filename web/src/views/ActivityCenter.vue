@@ -7,6 +7,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { resolveActivityGameplay } from '@/components/activity/gameplays'
 import ShareRewardActivity from '@/components/activity/ShareRewardActivity.vue'
+import YishuHuanfuActivityPanel from '@/components/activity/YishuHuanfuActivityPanel.vue'
+import { isYishuWindowOpen } from '@/constants/yishuhuanfu-window'
 import { useAccountStore } from '@/stores/account'
 import { useActivityCenterStore } from '@/stores/activity-center'
 import { useAppStore } from '@/stores/app'
@@ -21,6 +23,7 @@ import QingMeiActivityPage from './activity-center/QingMeiActivityPage.vue'
 import QixiActivityPage from './activity-center/QixiActivityPage.vue'
 import StellarActivityPage from './activity-center/StellarActivityPage.vue'
 import WeatherActivityPage from './activity-center/WeatherActivityPage.vue'
+import { useActivityClock } from './activity-center/useActivityClock'
 
 const props = withDefaults(defineProps<{ space?: 'farm' | 'ranch' }>(), { space: 'farm' })
 const router = useRouter()
@@ -32,6 +35,13 @@ const { currentAccountId } = storeToRefs(accountStore)
 const { season, shop, solarTerms, constellation, notice, actionError } = storeToRefs(activityStore)
 const selectedActivity = ref<ActivityGameplayKey | null>(null)
 const selectedInstanceId = ref('')
+const { serverNow } = useActivityClock()
+const selectedYishuEnd = ref(0)
+const selectedYishuAvailable = computed(() => isYishuWindowOpen(serverNow.value) && serverNow.value < selectedYishuEnd.value)
+watch(selectedYishuAvailable, (available) => {
+  if (!available && selectedActivity.value === 'yishuhuanfu')
+    goBack()
+})
 const appStore = useAppStore()
 watch(selectedActivity, (value) => {
   appStore.activityDetailOpen = !!value
@@ -47,12 +57,18 @@ async function openActivity(activity: ActivityDirectoryItemDto) {
   const gameplay = resolveActivityGameplay(activity)
   if (!gameplay)
     return
+  if (gameplay.module.key === 'yishuhuanfu') {
+    if (!isYishuWindowOpen(serverNow.value) || !activity.startTime || !activity.endTime
+      || serverNow.value < activity.startTime || serverNow.value >= activity.endTime)
+      return
+    selectedYishuEnd.value = activity.endTime
+  }
   if (gameplay.module.key === 'stellar')
     stellarEntryTab.value = gameplay.entryTab as ActivityTab
 
   selectedActivity.value = gameplay.module.key
   selectedInstanceId.value = activity.instanceId || activity.activityIds.find(id => ['2026092501', '2026110104'].includes(id)) || ''
-  if (['pet', 'wish', 'happy', 'milk', 'muge'].includes(gameplay.module.key))
+  if (['pet', 'wish', 'happy', 'milk', 'muge', 'yishuhuanfu'].includes(gameplay.module.key))
     return
   const detailsLoaded = await activityStore.loadDetails(accountId(), gameplay.module.key)
   if (gameplay.module.key === 'qixi' && currentAccountId.value) {
@@ -126,6 +142,7 @@ onUnmounted(() => {
     @open="openActivity"
   />
   <MugePage v-else-if="selectedActivity === 'muge'" @back="goBack" />
+  <YishuHuanfuActivityPanel v-else-if="selectedActivity === 'yishuhuanfu'" @back="goBack" />
   <MilkTeaPage v-else-if="selectedActivity === 'milk'" @back="goBack" />
   <ShareRewardActivity v-else-if="selectedActivity === 'happy'" :activity-id="selectedInstanceId" @back="goBack" />
   <AutumnActivityPage

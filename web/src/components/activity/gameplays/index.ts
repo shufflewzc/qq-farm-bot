@@ -8,6 +8,7 @@ import { stellarGameplay } from './stellar'
 import { weatherGameplay } from './weather'
 
 const gameplayModules: Record<ActivityGameplayKey, ActivityGameplayModule> = {
+  yishuhuanfu: { key: 'yishuhuanfu', defaultTab: 'yishuhuanfu', tabs: ['yishuhuanfu'] },
   muge: { key: 'muge', defaultTab: 'muge', tabs: ['muge'] },
   pet: petGameplay,
   wish: { key: 'wish', defaultTab: 'wish', tabs: ['wish'] },

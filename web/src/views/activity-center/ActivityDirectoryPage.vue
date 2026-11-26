@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import api from '@/api'
 import { activityHasGameplay } from '@/components/activity/gameplays'
+import { isYishuWindowOpen } from '@/constants/yishuhuanfu-window'
 import { useAccountStore } from '@/stores/account'
 import { normalizeActivityDirectory, useActivityCenterStore } from '@/stores/activity-center'
 import PetMascot from './PetMascot.vue'
@@ -39,6 +40,11 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
+})
+const yishuDateFormatter = new Intl.DateTimeFormat('zh-CN', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+  timeZone: 'Asia/Shanghai',
 })
 
 const accountDataLoaded = computed(() => !!currentAccountId.value && loadedAccountId.value === String(currentAccountId.value))
@@ -113,11 +119,17 @@ const displayActivities = computed<ActivityDirectoryItemDto[]>(() => {
   }
 
   const statusRank: Record<ActivityStatus, number> = { active: 0, upcoming: 1, ended: 2 }
+  const hasUpdateDates = entries.some(entry => entry.updatedAt)
   return entries.sort((left, right) => {
     const leftStatus = activityStatus(left)
     const rightStatus = activityStatus(right)
     if (leftStatus !== rightStatus)
       return statusRank[leftStatus] - statusRank[rightStatus]
+    if (hasUpdateDates) {
+      const leftUpdated = left.updatedAt ?? left.startTime ?? 0
+      const rightUpdated = right.updatedAt ?? right.startTime ?? 0
+      return rightUpdated - leftUpdated || (right.startTime ?? 0) - (left.startTime ?? 0)
+    }
     if (leftStatus === 'ended')
       return (right.endTime || 0) - (left.endTime || 0)
     return (left.startTime || 0) - (right.startTime || 0)
@@ -207,7 +219,7 @@ const standingActivities = computed(() => displayActivities.value.filter(isStand
 /** 进行中与即将开始的限时活动用大卡片；已结束的折叠到往期列表。 */
 const currentActivities = computed(() => timedActivities.value.filter(activity => activityStatus(activity) !== 'ended'))
 interface PastActivityRow { key: string, name: string, activity: ActivityDirectoryItemDto, ids: string[] }
-/** 同名同时间的往期条目（同一活动的多个子 ID）合并成一行。顺序沿用目录排序：结束越晚越靠前。 */
+/** 同名同时间的往期条目（同一活动的多个子 ID）合并成一行，沿用目录排序。 */
 const pastActivities = computed(() => {
   const rows = new Map<string, PastActivityRow>()
   for (const activity of timedActivities.value) {
@@ -267,6 +279,8 @@ function activityDisplayName(activity: ActivityDirectoryItemDto) {
   return activity.gameplayKey === 'pet' ? '萌宠日记' : activity.name
 }
 function activityIconSrc(activity: ActivityDirectoryItemDto) {
+  if (activity.gameplayKey === 'yishuhuanfu')
+    return '/activity/yishuhuanfu/card-bg.svg'
   if (activity.gameplayKey === 'muge')
     return '/activity-assets/muge/icon.png'
   if (activity.activityIds.some(id => ['2026111800', '2026111801'].includes(id)))
@@ -281,6 +295,8 @@ function activityIconSrc(activity: ActivityDirectoryItemDto) {
 }
 const shortDateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' })
 function formatShortPeriod(activity: ActivityDirectoryItemDto) {
+  if (activity.gameplayKey === 'yishuhuanfu')
+    return formatActivityPeriod(activity)
   const startTime = validActivityTime(activity.startTime)
   const endTime = validActivityTime(activity.endTime)
   const start = startTime === null ? '?' : shortDateFormatter.format(startTime)
@@ -297,13 +313,16 @@ function standingPeriod(activity: ActivityDirectoryItemDto) {
   return formatActivityPeriod(activity)
 }
 function activityCanOpen(activity: ActivityDirectoryItemDto) {
+  if (activity.gameplayKey === 'yishuhuanfu' && !isYishuWindowOpen(serverNow.value))
+    return false
   return activityHasGameplay(activity) && activityStatus(activity) === 'active'
 }
 function formatActivityPeriod(activity: ActivityDirectoryItemDto) {
   const startTime = validActivityTime(activity.startTime)
   const endTime = validActivityTime(activity.endTime)
-  const start = startTime === null ? '' : dateFormatter.format(startTime)
-  const end = endTime === null ? '' : dateFormatter.format(endTime)
+  const formatter = activity.gameplayKey === 'yishuhuanfu' ? yishuDateFormatter : dateFormatter
+  const start = startTime === null ? '' : formatter.format(startTime)
+  const end = endTime === null ? '' : formatter.format(endTime)
   if (start && end)
     return `${start} - ${end}`
   if (start)
