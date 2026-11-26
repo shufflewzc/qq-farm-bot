@@ -1,4 +1,4 @@
-# QQ 农场多账号挂机 + Web 面板（个人维护 fork）
+# QQ 农场多账号挂机 + Web 面板（个人自用维护 fork）
 
 > 上游 [liyangpengs/qq-farm-bot](https://github.com/liyangpengs/qq-farm-bot) 已于 **2026-11-25** 宣布停更。
 > 本仓库基于该上游继续维护。
